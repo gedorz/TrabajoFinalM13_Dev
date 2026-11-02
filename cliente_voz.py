@@ -53,6 +53,7 @@ clientes = None
 contextos_conversacion = []
 propuesta_sku = None
 contextos_propuesta = []
+codigo_pendiente = None
 
 
 # Grabacion y reproduccion
@@ -204,6 +205,26 @@ def resolver_codigo_de_voz(respuesta, contextos_previos):
     return anotar_turno(asistida, original, esperando=True)
 
 
+def procesar_codigo_de_voz(respuesta, contextos_previos):
+    global codigo_pendiente, contextos_conversacion
+    # Guardamos el reconocimiento original, no el texto interno de asistencia.
+    original = dialogflow.DetectIntentResponse(respuesta)
+    contextos = [dialogflow.Context(contexto) for contexto in contextos_previos]
+    resultado = resolver_codigo_de_voz(original, contextos)
+    codigo_pendiente = (original, contextos) if resultado.webhook_status.code == 4 else None
+    if not resultado.webhook_status.code:
+        contextos_conversacion = list(resultado.query_result.output_contexts)
+    return resultado
+
+
+def reintentar_codigo_pendiente():
+    if codigo_pendiente is None:
+        raise ValueError("No hay un dictado de código pendiente de reenvío.")
+    original, contextos = codigo_pendiente
+    print("Reenviando el código ya reconocido; no hace falta hablar.")
+    return procesar_codigo_de_voz(original, contextos)
+
+
 def hablar_con_el_agente(
     audio_bytes: bytes, esperando_sku: bool = False,
     esperando_ubicacion: bool = False,
@@ -273,10 +294,7 @@ def hablar_con_el_agente(
     resultado = respuesta.query_result
     transcripcion = resultado.query_text
     if (esperando_sku or confirmando_codigo) and transcripcion:
-        respuesta = resolver_codigo_de_voz(respuesta, contextos_previos)
-        if not respuesta.webhook_status.code:
-            contextos_conversacion = list(respuesta.query_result.output_contexts)
-        return respuesta
+        return procesar_codigo_de_voz(respuesta, contextos_previos)
     ciudad = ciudad_dictada(transcripcion) if esperando_ubicacion else None
     parametros = resultado.parameters or {}
     ubicacion = str(parametros.get("ubicacion", ""))
@@ -364,6 +382,7 @@ def leer_opciones():
 
 
 def main():
+    global codigo_pendiente
     opciones = leer_opciones()
     if opciones.listar_microfonos:
         listar_microfonos()
@@ -392,29 +411,38 @@ def main():
     esperando_sku = False
     esperando_ubicacion = False
     while True:
-        if input("\n> ").strip().lower() == "q":
+        if codigo_pendiente is not None:
+            print("Enter: reenviar el código conservado. 'r': grabar otro dato. 'q': salir.")
+        comando = input("\n> ").strip().lower()
+        if comando == "q":
             break
-
-        try:
-            segundos = opciones.segundos_sku if esperando_sku else opciones.segundos
-            if esperando_sku:
-                print("Confirma el código propuesto diciendo sí o no." if propuesta_sku else (
-                    "Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M "
-                    "si has añadido el alias a la entidad codigo_sku en Dialogflow."
-                ))
-            audio = escuchar(
-                segundos, opciones.microfono, recortar=not opciones.sin_recorte_silencio
+        if codigo_pendiente is not None and comando not in ("", "r"):
+            continue
+        if comando == "r":
+            codigo_pendiente = None
+        if codigo_pendiente is not None:
+            respuesta = reintentar_codigo_pendiente()
+        else:
+            try:
+                segundos = opciones.segundos_sku if esperando_sku else opciones.segundos
+                if esperando_sku:
+                    print("Confirma el código propuesto diciendo sí o no." if propuesta_sku else (
+                        "Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M "
+                        "si has añadido el alias a la entidad codigo_sku en Dialogflow."
+                    ))
+                audio = escuchar(
+                    segundos, opciones.microfono, recortar=not opciones.sin_recorte_silencio
+                )
+            except (sd.PortAudioError, ValueError) as error:
+                print(f"ERROR MICRÓFONO: {error}")
+                print("Consulta las entradas con --listar-microfonos y elige una con --microfono ID.")
+                continue
+            if not audio:
+                continue
+            respuesta = hablar_con_el_agente(
+                audio, esperando_sku=esperando_sku,
+                esperando_ubicacion=esperando_ubicacion,
             )
-        except (sd.PortAudioError, ValueError) as error:
-            print(f"ERROR MICRÓFONO: {error}")
-            print("Consulta las entradas con --listar-microfonos y elige una con --microfono ID.")
-            continue
-        if not audio:
-            continue
-        respuesta = hablar_con_el_agente(
-            audio, esperando_sku=esperando_sku,
-            esperando_ubicacion=esperando_ubicacion,
-        )
         r = respuesta.query_result
 
         if not r.query_text.strip() and not r.intent.display_name:
@@ -440,8 +468,11 @@ def main():
                 f"  ERROR WEBHOOK: {respuesta.webhook_status.code} "
                 f"{respuesta.webhook_status.message}"
             )
-            print("  No se ha validado este turno. Repite el mismo dato cuando el webhook responda.")
-            if propuesta_sku:
+            if codigo_pendiente is not None:
+                print("  Dictado conservado. Pulsa Enter para reenviarlo cuando el webhook responda.")
+            else:
+                print("  No se ha validado este turno. Repite el mismo dato cuando el webhook responda.")
+            if propuesta_sku and codigo_pendiente is None:
                 print(f"  Se conserva la propuesta {propuesta_sku}; repite la confirmación del código.")
             continue
         print(f"  Responde   : {r.fulfillment_text}")
