@@ -76,3 +76,13 @@ data/
 .codex
 credentials.json
 my-project-agente-v1-cc15a176d628.json
+
+# Código de Dialogflow y pruebas que utiliza el cliente de voz
+!docs/
+docs/*
+!docs/dialogflow/
+docs/dialogflow/*
+!docs/dialogflow/*.py
+!docs/codetest/
+docs/codetest/*
+!docs/codetest/*.py

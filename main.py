@@ -21,10 +21,12 @@ from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
+from starlette.concurrency import run_in_threadpool
 
 from ocr import cargar_documentos
 from negocio import gestionar_negocio, responder
 from docs.dialogflow.diagnostico import registrar_intercambio
+from docs.dialogflow.ayuda_voz import responder_ayuda_sku
 
 load_dotenv()  # carga GOOGLE_API_KEY desde el .env
 
@@ -139,13 +141,17 @@ async def webhook(request: Request):
     pregunta = resultado.get("queryText", "")
 
     registrar_intercambio(body, {})
+    ayuda = responder_ayuda_sku(body, PRODUCTOS)
+    if ayuda is not None:
+        registrar_intercambio(body, ayuda)
+        return ayuda
     respuesta = gestionar_negocio(body, PRODUCTOS)
     if respuesta is not None:
         registrar_intercambio(body, respuesta)
         return respuesta
 
     if intencion in ("consulta_especificaciones_producto", "Default Fallback Intent"):
-        return gestionar_fallback(pregunta)
+        return await run_in_threadpool(gestionar_fallback, pregunta)
 
     # Nunca dejar al agente sin respuesta
     return responder("Todavía no sé gestionar esa petición.")

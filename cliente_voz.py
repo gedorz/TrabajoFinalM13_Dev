@@ -28,13 +28,18 @@ from dotenv import load_dotenv
 
 from audio_voz import DetectorSilencio, recortar_silencio
 from docs.dialogflow.pistas_voz import PISTAS_RECONOCIMIENTO_SKU
+from docs.dialogflow.normalizar_voz import (
+    ciudad_dictada, codigo_dictado, confirmacion_dictada, sugerir_codigo,
+)
 
 # Configuracion
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 PROJECT_ID = os.environ.get("DIALOGFLOW_PROJECT_ID", "my-project-agente-v1") # Aqui poned vuestro ID de proyecto de Dialogflow, está puesto el mío
-IDIOMA = "es"
+IDIOMA = os.getenv("DIALOGFLOW_LANGUAGE_CODE", "es-ES")
+MODELO_VOZ = os.getenv("DIALOGFLOW_SPEECH_MODEL", "latest_long")
+MODELO_CONFIRMACION = os.getenv("DIALOGFLOW_CONFIRMATION_MODEL", "latest_short")
 FS = 16000          # Dialogflow espera 16 kHz para LINEAR_16
 SEGUNDOS = 5
 
@@ -45,6 +50,9 @@ SEGUNDOS = 5
 SESSION_ID = str(uuid.uuid4())
 
 clientes = None
+contextos_conversacion = []
+propuesta_sku = None
+contextos_propuesta = []
 
 
 # Grabacion y reproduccion
@@ -138,19 +146,94 @@ def reproducir(wav_bytes: bytes, fichero: str = "respuesta.wav") -> None:
 
 # Llamada a Dialogflow
 
-def hablar_con_el_agente(audio_bytes: bytes, esperando_sku: bool = False):
-    global clientes
+def detectar_texto(texto: str, contextos: list, ayuda: dict | None = None):
+    parametros = dialogflow.QueryParameters(reset_contexts=True, contexts=contextos)
+    if ayuda is not None:
+        parametros.payload = {"ayuda_sku": ayuda}
+    return clientes.detect_intent(
+        request={
+            "session": clientes.session_path(PROJECT_ID, SESSION_ID),
+            "query_input": dialogflow.QueryInput(
+                text=dialogflow.TextInput(text=texto, language_code=IDIOMA)
+            ),
+            "query_params": parametros,
+            "output_audio_config": dialogflow.OutputAudioConfig(
+                audio_encoding=dialogflow.OutputAudioEncoding.OUTPUT_AUDIO_ENCODING_LINEAR_16
+            ),
+        },
+        timeout=20,
+    )
+
+
+def anotar_turno(respuesta, original, texto=None, codigo=None, esperando=False):
+    resultado = respuesta.query_result
+    resultado.diagnostic_info = {
+        **dict(resultado.diagnostic_info or {}),
+        "transcripcion_original": original.query_text,
+        "texto_normalizado": texto or "",
+        "sku_normalizado": codigo or "",
+        "confianza_voz_original": original.speech_recognition_confidence,
+        "esperando_sku": esperando,
+        "propuesta_sku": propuesta_sku or "",
+    }
+    return respuesta
+
+
+def resolver_codigo_de_voz(respuesta, contextos_previos):
+    global propuesta_sku, contextos_propuesta
+    original = respuesta.query_result
+    base = list(contextos_propuesta if propuesta_sku else contextos_previos)
+    decision = confirmacion_dictada(original.query_text) if propuesta_sku else None
+    codigo = propuesta_sku if decision is True else codigo_dictado(original.query_text)
+    if codigo:
+        corregida = detectar_texto(codigo, base)
+        if not corregida.webhook_status.code:
+            propuesta_sku = None
+            contextos_propuesta = []
+        return anotar_turno(corregida, original, texto=codigo, codigo=codigo)
+    if decision is False:
+        propuesta_sku = None
+        contextos_propuesta = []
+    candidato = None if decision is False else propuesta_sku or sugerir_codigo(original.query_text)
+    ayuda = {"tipo": "confirmar", "codigo": candidato} if candidato else {"tipo": "repetir"}
+    asistida = detectar_texto("__ASISTENCIA_SKU__", base, ayuda=ayuda)
+    marca = (asistida.query_result.webhook_payload or {}).get("ayuda_sku", {})
+    if candidato and not asistida.webhook_status.code and marca.get("tipo") == "confirmar":
+        propuesta_sku = candidato
+        contextos_propuesta = base
+    return anotar_turno(asistida, original, esperando=True)
+
+
+def hablar_con_el_agente(
+    audio_bytes: bytes, esperando_sku: bool = False,
+    esperando_ubicacion: bool = False,
+):
+    global clientes, contextos_conversacion
     if clientes is None:
         clientes = dialogflow.SessionsClient()
     sesion = clientes.session_path(PROJECT_ID, SESSION_ID)
+    contextos_previos = list(contextos_conversacion)
+    confirmando_codigo = propuesta_sku is not None
+    confirmando_compra = any(
+        contexto.name.endswith("/contexts/solicitar_producto_amazon-followup")
+        and (contexto.parameters or {}).get("estado") == "pendiente"
+        for contexto in contextos_previos
+    )
+    confirmando = confirmando_codigo or confirmando_compra
     entrada = dialogflow.QueryInput(
         audio_config=dialogflow.InputAudioConfig(
             audio_encoding=dialogflow.AudioEncoding.AUDIO_ENCODING_LINEAR_16,
             language_code=IDIOMA,
             sample_rate_hertz=FS,
+            model=MODELO_CONFIRMACION if confirmando else MODELO_VOZ,
             # Las pistas explícitas sustituyen la adaptación automática.
             # Se aplican solo mientras se recoge el código del producto.
-            speech_contexts=[
+            speech_contexts=[dialogflow.SpeechContext(
+                phrases=[
+                    "sí", "no", "correcto", "de acuerdo", "no es correcto",
+                    "es correcto sí", "sí es correcto", "correcto sí",
+                ], boost=10
+            )] if confirmando else [
                 dialogflow.SpeechContext(phrases=PISTAS_RECONOCIMIENTO_SKU, boost=10)
             ] if esperando_sku else [],
         )
@@ -160,14 +243,60 @@ def hablar_con_el_agente(audio_bytes: bytes, esperando_sku: bool = False):
         audio_encoding=dialogflow.OutputAudioEncoding.OUTPUT_AUDIO_ENCODING_LINEAR_16
     )
 
-    return clientes.detect_intent(
-        request={
-            "session": sesion,
-            "query_input": entrada,
-            "input_audio": audio_bytes,
-            "output_audio_config": salida,
-        }
+    peticion = {
+        "session": sesion,
+        "query_input": entrada,
+        "input_audio": audio_bytes,
+        "output_audio_config": salida,
+    }
+    if contextos_previos or esperando_sku or esperando_ubicacion or confirmando_codigo:
+        peticion["query_params"] = dialogflow.QueryParameters(
+            reset_contexts=True, contexts=contextos_previos
+        )
+    if confirmando_codigo:
+        peticion["query_params"].payload = {"ayuda_sku": {"tipo": "escuchar_confirmacion"}}
+    respuesta = clientes.detect_intent(
+        request=peticion,
+        timeout=20,
     )
+    if (
+        confirmando and MODELO_CONFIRMACION != MODELO_VOZ
+        and not respuesta.query_result.query_text.strip()
+        and not respuesta.query_result.intent.display_name
+        and not respuesta.webhook_status.code
+    ):
+        print("Confirmación sin transcripción; probando una vez el mismo audio con el modelo largo.")
+        alternativa = dict(peticion)
+        alternativa["query_input"] = dialogflow.QueryInput(entrada)
+        alternativa["query_input"].audio_config.model = MODELO_VOZ
+        respuesta = clientes.detect_intent(request=alternativa, timeout=20)
+    resultado = respuesta.query_result
+    transcripcion = resultado.query_text
+    if (esperando_sku or confirmando_codigo) and transcripcion:
+        respuesta = resolver_codigo_de_voz(respuesta, contextos_previos)
+        if not respuesta.webhook_status.code:
+            contextos_conversacion = list(respuesta.query_result.output_contexts)
+        return respuesta
+    ciudad = ciudad_dictada(transcripcion) if esperando_ubicacion else None
+    parametros = resultado.parameters or {}
+    ubicacion = str(parametros.get("ubicacion", ""))
+    if esperando_ubicacion and not ciudad and ubicacion:
+        if transcripcion.strip(" .!?\n\t").casefold() == ubicacion.casefold():
+            ciudad = ubicacion
+    reintentar_ubicacion = bool(
+        esperando_ubicacion and ciudad and respuesta.webhook_status.code == 4
+    )
+    if ciudad and (ubicacion.casefold() != ciudad.casefold() or reintentar_ubicacion):
+        if reintentar_ubicacion:
+            print("El webhook agotó el tiempo; reintentando una vez la ciudad ya reconocida.")
+        respuesta = detectar_texto(ciudad, contextos_previos)
+        anotar_turno(respuesta, resultado, texto=ciudad)
+        respuesta.query_result.diagnostic_info["reintento_webhook_ubicacion"] = reintentar_ubicacion
+    if not respuesta.webhook_status.code and (
+        respuesta.query_result.query_text or respuesta.query_result.intent.display_name
+    ):
+        contextos_conversacion = list(respuesta.query_result.output_contexts)
+    return respuesta
 
 
 # Bucle de conversacion
@@ -255,10 +384,13 @@ def main():
     print("Cliente de voz de Dialogflow")
     print(f"Proyecto : {PROJECT_ID}")
     print(f"Sesion   : {SESSION_ID}")
+    print(f"Voz      : {MODELO_VOZ} ({IDIOMA})")
+    print(f"Sí / No  : {MODELO_CONFIRMACION}")
     print("Enter para hablar, 'q' + Enter para salir.")
     print("=" * 55)
 
     esperando_sku = False
+    esperando_ubicacion = False
     while True:
         if input("\n> ").strip().lower() == "q":
             break
@@ -266,10 +398,10 @@ def main():
         try:
             segundos = opciones.segundos_sku if esperando_sku else opciones.segundos
             if esperando_sku:
-                print(
+                print("Confirma el código propuesto diciendo sí o no." if propuesta_sku else (
                     "Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M "
                     "si has añadido el alias a la entidad codigo_sku en Dialogflow."
-                )
+                ))
             audio = escuchar(
                 segundos, opciones.microfono, recortar=not opciones.sin_recorte_silencio
             )
@@ -279,7 +411,10 @@ def main():
             continue
         if not audio:
             continue
-        respuesta = hablar_con_el_agente(audio, esperando_sku=esperando_sku)
+        respuesta = hablar_con_el_agente(
+            audio, esperando_sku=esperando_sku,
+            esperando_ubicacion=esperando_ubicacion,
+        )
         r = respuesta.query_result
 
         if not r.query_text.strip() and not r.intent.display_name:
@@ -290,17 +425,35 @@ def main():
             )
             continue
 
-        esperando_sku = (
-            r.intent.display_name in ("solicitar_producto_amazon", "consultar_disponibiliadad")
-            and not r.parameters.get("codigo_sku")
-        )
-
         # query_text es vuestro speech-to-text. No hemos llamado a ningun
         # servicio de transcripcion: va dentro del mismo detect_intent.
-        print(f"  Has dicho  : {r.query_text}")
+        diagnostico = r.diagnostic_info or {}
+        print(f"  Has dicho  : {diagnostico.get('transcripcion_original', r.query_text)}")
+        if diagnostico.get("texto_normalizado"):
+            print(f"  Texto procesado: {diagnostico['texto_normalizado']}")
+        confianza_voz = diagnostico.get("confianza_voz_original", r.speech_recognition_confidence)
+        print(f"  Confianza de voz: {confianza_voz:.2f}")
         print(f"  Intencion  : {r.intent.display_name} ({r.intent_detection_confidence:.2f})")
         print(f"  Parametros : {dict(r.parameters) if r.parameters is not None else {}}")
+        if respuesta.webhook_status.code:
+            print(
+                f"  ERROR WEBHOOK: {respuesta.webhook_status.code} "
+                f"{respuesta.webhook_status.message}"
+            )
+            print("  No se ha validado este turno. Repite el mismo dato cuando el webhook responda.")
+            if propuesta_sku:
+                print(f"  Se conserva la propuesta {propuesta_sku}; repite la confirmación del código.")
+            continue
         print(f"  Responde   : {r.fulfillment_text}")
+        esperando_sku = bool(diagnostico.get("esperando_sku")) or (
+            r.intent.display_name in ("solicitar_producto_amazon", "consultar_disponibiliadad")
+            and not (r.parameters or {}).get("codigo_sku")
+        )
+        esperando_ubicacion = (
+            not esperando_sku and r.intent.display_name == "solicitar_producto_amazon"
+            and bool((r.parameters or {}).get("codigo_sku"))
+            and not (r.parameters or {}).get("ubicacion")
+        )
 
         if respuesta.output_audio:
             reproducir(respuesta.output_audio)
