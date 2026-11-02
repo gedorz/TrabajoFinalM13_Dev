@@ -13,20 +13,23 @@ o ngrok http 8000) y pegar la URL + /webhook en Fulfillment.
 Acordaos de activar "Enable webhook call for this intent" EN CADA INTENCION.
 """
 
+import logging
 import os
 import re
 
 from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from ocr import cargar_documentos
 from negocio import gestionar_negocio, responder
+from docs.dialogflow.diagnostico import registrar_intercambio
 
 load_dotenv()  # carga GOOGLE_API_KEY desde el .env
 
 app = FastAPI()
+logger = logging.getLogger("uvicorn.error")
 
 # Datos de negocio simulados
 #
@@ -135,14 +138,10 @@ async def webhook(request: Request):
     intencion = resultado["intent"]["displayName"]
     pregunta = resultado.get("queryText", "")
 
-    # Imprimimos siempre lo que llega: sera util para depurar luego
-    print("-" * 50)
-    print("INTENCION:", intencion)
-    print("PARAMETROS:", resultado.get("parameters", {}))
-    print("TEXTO:", pregunta)
-
+    registrar_intercambio(body, {})
     respuesta = gestionar_negocio(body, PRODUCTOS)
     if respuesta is not None:
+        registrar_intercambio(body, respuesta)
         return respuesta
 
     if intencion in ("consulta_especificaciones_producto", "Default Fallback Intent"):
@@ -164,6 +163,7 @@ def raiz():
 # y una variable de entorno GOOGLE_API_KEY 
 
 cliente = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+MODELO_GEMINI = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 INSTRUCCIONES = """Eres el asistente telefónico de kit robotic.
 Respondes en español, en dos o tres frases como mucho, porque tu respuesta
@@ -212,7 +212,7 @@ def seleccionar_documentos(pregunta: str, n: int = 2) -> str:
 
 def preguntar_al_modelo(prompt: str) -> str:
     respuesta = cliente.models.generate_content(
-        model="gemini-2.5-flash",
+        model=MODELO_GEMINI,
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=INSTRUCCIONES,
@@ -244,7 +244,15 @@ def gestionar_fallback(pregunta: str) -> dict:
     try:
         return responder(preguntar_al_modelo(prompt))
     except Exception as e:
-        print("ERROR LLM:", e)
+        if isinstance(e, errors.APIError) and e.code == 503:
+            logger.error(
+                "LLM NO DISPONIBLE | HTTP 503 UNAVAILABLE | modelo=%s | "
+                "Gemini no está disponible temporalmente. "
+                "Puede deberse a alta demanda; vuelve a intentarlo más tarde.",
+                MODELO_GEMINI,
+            )
+        else:
+            logger.error("ERROR LLM | modelo=%s | %s", MODELO_GEMINI, e)
         return responder(
             "Ahora mismo no puedo responder a eso. ¿Quieres que te pase con un agente?"
         )

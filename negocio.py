@@ -21,7 +21,9 @@ def normalizar_codigo_producto(valor: str) -> str:
 def obtener_contexto(body: dict) -> dict:
     nombre = f"{body.get('session', '')}/contexts/{CONTEXTO_SOLICITUD}"
     for contexto in body["queryResult"].get("outputContexts", []):
-        if contexto.get("name") == nombre and contexto.get("lifespanCount", 0) > 0:
+        # En el turno de cierre Dialogflow puede enviar los parámetros sin
+        # lifespanCount (cero por defecto). Siguen siendo válidos para este turno.
+        if contexto.get("name") == nombre:
             return contexto.get("parameters", {})
     return {}
 

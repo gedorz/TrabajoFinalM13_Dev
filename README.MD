@@ -30,8 +30,8 @@ uvicorn main:app --reload --port 8000
 ## Instalacion de Tesseract.
 
 Son dos cosas: el programa y el paquete de Python.
-esta aplicacion se instala desde 
-
+esta aplicacion se instala desde: 
+- https://github.com/UB-Mannheim/tesseract/wiki
 - Windows: instalador de UB Mannheim, **marcando el paquete de idioma español** durante la instalación.
 - Si el ejecutable no está en el `PATH`, `ocr.py` detecta automáticamente 
     la instalación en `C:\Program Files\Tesseract-OCR\tesseract.exe`. 
