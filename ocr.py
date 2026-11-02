@@ -3,20 +3,23 @@ OCR offline con Tesseract + extraccion de datos con expresiones regulares.
 
 Bloque 2 de la entrega: documentacion y busqueda documental.
 
-Se ejecuta UNA VEZ al arrancar el webhook (ver main.py). Reconocer una imagen
-tarda segundos y Dialogflow corta la llamada a los 5, asi que el OCR nunca
-puede ir dentro de la peticion.
+Se ejecuta offline para guardar texto y campos extraídos en un JSON.
+El webhook carga ese archivo sin volver a procesar las imágenes.
 
 Uso suelto, para probar:
     python ocr.py
 """
 
+import hashlib
+import json
 import re
 import shutil
 from pathlib import Path
 
 import pytesseract
 from PIL import Image
+
+from documentacion_ocr import RUTA_CORPUS
 
 # Configuracion
 
@@ -59,7 +62,7 @@ def cargar_documentos(carpeta: Path = CARPETA) -> dict[str, str]:
 
     documentos = {}
     for ruta in sorted(carpeta.iterdir()):
-        if ruta.suffix.lower() not in EXTENSIONES:
+        if not ruta.is_file() or ruta.suffix.lower() not in EXTENSIONES:
             continue
         try:
             documentos[ruta.name] = leer_documento(ruta)
@@ -75,8 +78,8 @@ def cargar_documentos(carpeta: Path = CARPETA) -> dict[str, str]:
 PATRONES = {
     #Placa de auto española: 4 digitos + 3 consonantes (sin vocales, N ni Q)
     "Placa": r"\b\d{4}\s?[B-DF-HJ-NP-TV-Z]{3}\b",
-    # SKU : [Modelo]-[Color]-[Talla], como ZAP-AIR90-BLR-42
-    "SKU": r"\b[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+\b",
+    # Los límites impiden aceptar un fragmento de una referencia más larga.
+    "SKU": r"(?<![\w-])ESP32(?:-[A-Z0-9]+){2,4}(?![\w-])",
     # SKU: alterno
     "SKU_alterno": r"^[A-Za-z0-9_-]{1,40}$",
     # NIF: 8 digitos + letra
@@ -118,23 +121,51 @@ def normalizar_ocr(texto: str) -> str:
     )
 
 
-# Prueba suelta
+def generar_corpus(carpeta: Path = CARPETA, destino: Path = RUTA_CORPUS) -> dict:
+    rutas = sorted(
+        ruta for ruta in carpeta.iterdir()
+        if ruta.is_file() and ruta.suffix.lower() in EXTENSIONES
+    )
+    if not rutas:
+        raise ValueError(f"No hay imágenes para procesar en {carpeta}")
+    textos = cargar_documentos(carpeta)
+    fallidos = [ruta.name for ruta in rutas if not textos.get(ruta.name, "").strip()]
+    if fallidos:
+        raise ValueError(
+            "No se guarda un corpus incompleto. Revisa el OCR de: " + ", ".join(fallidos)
+        )
+    corpus = {
+        "version": 1,
+        "motor": "Tesseract",
+        "idioma": "spa",
+        "configuracion": CONFIG_TESSERACT,
+        "documentos": {
+            ruta.name: {
+                "sha256_imagen": hashlib.sha256(ruta.read_bytes()).hexdigest(),
+                "texto": textos[ruta.name],
+                "datos_extraidos": extraer_datos(textos[ruta.name]),
+            }
+            for ruta in rutas
+        },
+    }
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporal = destino.with_suffix(destino.suffix + ".tmp")
+    temporal.write_text(json.dumps(corpus, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporal.replace(destino)
+    return corpus
 
-if __name__ == "__main__":
-    documentos = cargar_documentos()
 
-    if not documentos:
-        if any(ruta.is_file() and ruta.suffix.lower() in EXTENSIONES for ruta in CARPETA.glob("*")):
-            print("\nNo se pudo leer ninguna imagen. Revisa los errores de OCR anteriores.")
-        else:
-            print("\nNo hay imagenes. Mete imagenes en la carpeta 'documentos/'.")
-
-    for nombre, texto in documentos.items():
-        print("\n" + "=" * 60)
-        print(nombre)
-        print("=" * 60)
-        print(texto[:500])
-        print("\n--- Datos extraidos ---")
-        for campo, valores in extraer_datos(texto).items():
+def main():
+    try:
+        corpus = generar_corpus()
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"ERROR OCR: {error}") from error
+    for nombre, documento in corpus["documentos"].items():
+        print(f"\n{nombre}: {len(documento['texto'])} caracteres")
+        for campo, valores in documento["datos_extraidos"].items():
             if valores:
                 print(f"  {campo}: {valores}")
+    print(f"\nCorpus guardado: {RUTA_CORPUS}")
+
+if __name__ == "__main__":
+    main()

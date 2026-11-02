@@ -86,7 +86,7 @@ class TimeoutUbicacionTests(unittest.TestCase):
     def test_llm_lento_no_bloquea_peticion_de_negocio(self):
         with (
             patch.dict(os.environ, {"GOOGLE_API_KEY": "clave-de-prueba"}),
-            patch("ocr.cargar_documentos", return_value={}),
+            patch("documentacion_ocr.cargar_documentos", return_value={}),
             patch("google.genai.Client"),
         ):
             main = importlib.import_module("main")

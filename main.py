@@ -23,10 +23,11 @@ from google import genai
 from google.genai import errors, types
 from starlette.concurrency import run_in_threadpool
 
-from ocr import cargar_documentos
+from documentacion_ocr import cargar_documentos
 from negocio import gestionar_negocio, responder
 from docs.dialogflow.diagnostico import registrar_intercambio
 from docs.dialogflow.ayuda_voz import responder_ayuda_sku
+from docs.dialogflow.respuestas_voz import agregar_ssml
 
 load_dotenv()  # carga GOOGLE_API_KEY desde el .env
 
@@ -122,10 +123,9 @@ PRODUCTOS = {
 
 
 # Documentos para la respuesta documental (OCR)
-# Se cargan UNA VEZ al arrancar. Nunca dentro de la peticion: Dialogflow corta
-# a los 5 segundos y el OCR tarda mas que eso.
+# Se lee el corpus generado offline; Tesseract no se ejecuta en el servidor.
 
-print("Cargando documentos con OCR...")
+print("Cargando texto OCR persistido...")
 DOCUMENTOS = cargar_documentos()
 print(f"Documentos cargados: {len(DOCUMENTOS)}\n")
 
@@ -141,20 +141,17 @@ async def webhook(request: Request):
     pregunta = resultado.get("queryText", "")
 
     registrar_intercambio(body, {})
-    ayuda = responder_ayuda_sku(body, PRODUCTOS)
-    if ayuda is not None:
-        registrar_intercambio(body, ayuda)
-        return ayuda
-    respuesta = gestionar_negocio(body, PRODUCTOS)
-    if respuesta is not None:
-        registrar_intercambio(body, respuesta)
-        return respuesta
-
-    if intencion in ("consulta_especificaciones_producto", "Default Fallback Intent"):
-        return await run_in_threadpool(gestionar_fallback, pregunta)
-
-    # Nunca dejar al agente sin respuesta
-    return responder("Todavía no sé gestionar esa petición.")
+    respuesta = responder_ayuda_sku(body, PRODUCTOS)
+    if respuesta is None:
+        respuesta = gestionar_negocio(body, PRODUCTOS)
+    if respuesta is None:
+        if intencion in ("consulta_especificaciones_producto", "Default Fallback Intent"):
+            respuesta = await run_in_threadpool(gestionar_fallback, pregunta)
+        else:
+            respuesta = responder("Todavía no sé gestionar esa petición.")
+    respuesta = agregar_ssml(respuesta)
+    registrar_intercambio(body, respuesta)
+    return respuesta
 
 
 @app.get("/")

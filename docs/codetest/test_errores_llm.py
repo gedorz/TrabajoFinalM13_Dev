@@ -13,7 +13,7 @@ class ErroresLLMTests(unittest.TestCase):
     def setUpClass(cls):
         with (
             patch.dict(os.environ, {"GOOGLE_API_KEY": "clave-de-prueba"}),
-            patch("ocr.cargar_documentos", return_value={}),
+            patch("documentacion_ocr.cargar_documentos", return_value={}),
             patch("google.genai.Client"),
         ):
             cls.main = importlib.import_module("main")

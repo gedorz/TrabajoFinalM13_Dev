@@ -16,6 +16,7 @@ def registrar_intercambio(body: dict, respuesta: dict) -> None:
         "contextos_recibidos": resultado.get("outputContexts", []),
         "contextos_devueltos": respuesta.get("outputContexts", []),
         "respuesta": respuesta.get("fulfillmentText", ""),
+        "mensajes_devueltos": respuesta.get("fulfillmentMessages", []),
     }
     try:
         RUTA_DIAGNOSTICO.write_text(
