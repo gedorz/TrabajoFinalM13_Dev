@@ -8,6 +8,9 @@ Pontia:
 Las siguientes evidencias recogen ejecuciones satisfactorias del prototipo.
 Las solicitudes son simuladas: no se realizan compras ni envíos reales.
 
+video de youtube https://youtu.be/P5S07cUQtYQ
+
+
 ### Acceso público y documentos cargados
 
 La comprobación del 2 de noviembre de 2026 muestra acceso público al servidor
