@@ -26,6 +26,7 @@ import numpy as np
 from google.cloud import dialogflow
 from dotenv import load_dotenv
 
+from audio_voz import DetectorSilencio, recortar_silencio
 from docs.dialogflow.pistas_voz import PISTAS_RECONOCIMIENTO_SKU
 
 # Configuracion
@@ -57,7 +58,10 @@ def listar_microfonos() -> None:
             print(f"{indice}: {dispositivo['name']} [{api}]{marca}")
 
 
-def escuchar(segundos: int = SEGUNDOS, microfono: int | None = None) -> bytes:
+def escuchar(
+    segundos: int = SEGUNDOS, microfono: int | None = None,
+    recortar: bool = True,
+) -> bytes:
     dispositivo = sd.query_devices(microfono, "input")
     indice_microfono = dispositivo["index"]
     sd.check_input_settings(
@@ -65,12 +69,8 @@ def escuchar(segundos: int = SEGUNDOS, microfono: int | None = None) -> bytes:
     )
     seleccion = " (predeterminado del sistema)" if microfono is None else ""
     print(f"Micrófono: {dispositivo['name']}{seleccion}")
-    print(f"\nHabla ({segundos}s)...")
-    audio = sd.rec(
-        int(segundos * FS), samplerate=FS, channels=1,
-        dtype="int16", device=indice_microfono,
-    )
-    sd.wait()
+    print("Preparando micrófono; espera al aviso 'Habla'...")
+    audio = capturar_hasta_silencio(segundos, indice_microfono)
     pico = float(np.max(np.abs(audio.astype(np.float32)))) / 32768
     print(f"Nivel máximo grabado: {pico:.1%}")
     if pico < 0.001:
@@ -80,8 +80,42 @@ def escuchar(segundos: int = SEGUNDOS, microfono: int | None = None) -> bytes:
             "de entrada de Windows. No se enviará esta grabación a Dialogflow."
         )
         return b""
+    grabacion = audio.tobytes()
+    preparada = recortar_silencio(grabacion, FS) if recortar else grabacion
+    print(
+        f"Duración capturada: {len(grabacion) / (FS * 2):.2f}s; "
+        f"audio preparado: {len(preparada) / (FS * 2):.2f}s "
+        f"(recorte {'activado' if recortar else 'desactivado'})."
+    )
     print("Procesando...")
-    return audio.tobytes()
+    return preparada
+
+
+def capturar_hasta_silencio(segundos: int, microfono: int) -> np.ndarray:
+    if segundos <= 0:
+        raise ValueError("La duración máxima debe ser mayor que cero")
+    tamano_bloque = int(FS * 0.020)
+    limite = int(segundos * FS)
+    detector = DetectorSilencio(FS, segundos=3)
+    bloques = []
+    capturadas = 0
+    aviso_desbordamiento = False
+    with sd.InputStream(
+        samplerate=FS, channels=1, dtype="int16",
+        device=microfono, blocksize=tamano_bloque,
+    ) as flujo:
+        print(f"\nHabla (máximo {segundos}s; parada tras más de 3s de silencio)...", flush=True)
+        while capturadas < limite:
+            bloque, desbordamiento = flujo.read(min(tamano_bloque, limite - capturadas))
+            if desbordamiento and not aviso_desbordamiento:
+                print("ADVERTENCIA AUDIO: el dispositivo ha perdido muestras durante la captura.")
+                aviso_desbordamiento = True
+            bloques.append(bloque.copy())
+            capturadas += len(bloque)
+            if detector.actualizar(bloque):
+                print("Grabación detenida: más de 3 segundos de silencio.")
+                break
+    return np.concatenate(bloques, axis=0)
 
 
 def reproducir(wav_bytes: bytes, fichero: str = "respuesta.wav") -> None:
@@ -138,18 +172,32 @@ def hablar_con_el_agente(audio_bytes: bytes, esperando_sku: bool = False):
 
 # Bucle de conversacion
 
-def probar_microfono(segundos: int, microfono: int | None) -> None:
-    print("Prueba local: la grabación no se guarda ni se envía a Dialogflow.")
+def probar_microfono(
+    segundos: int, microfono: int | None, comprobar_reconocimiento: bool = False,
+    recortar: bool = True,
+) -> None:
+    if comprobar_reconocimiento:
+        print("Prueba de reconocimiento: se reproducirá y enviará la misma toma a Dialogflow.")
+    else:
+        print("Prueba local: la grabación no se guarda ni se envía a Dialogflow.")
     print("Cuando aparezca 'Habla', di: Hola, quiero iniciar una solicitud.")
     input("Pulsa Enter para empezar...")
     try:
-        audio = escuchar(segundos, microfono)
+        audio = escuchar(segundos, microfono, recortar=recortar)
         if not audio:
             return
         print("Reproduciendo lo que ha captado el micrófono...")
         sd.play(np.frombuffer(audio, dtype=np.int16), FS)
         sd.wait()
         print("Comprueba si oyes tu frase completa, clara y sin distorsión.")
+        if comprobar_reconocimiento:
+            print(f"Audio enviado: {len(audio)} bytes, {len(audio) / (FS * 2):.2f}s, mono PCM16, {FS} Hz.")
+            respuesta = hablar_con_el_agente(audio)
+            resultado = respuesta.query_result
+            print(f"Has dicho: {resultado.query_text or '(sin transcripción)'}")
+            print(f"Confianza de voz: {resultado.speech_recognition_confidence:.2f}")
+            print(f"Intención: {resultado.intent.display_name or '(sin intención)'}")
+            print(f"Respuesta: {resultado.fulfillment_text or '(sin respuesta)'}")
     except (sd.PortAudioError, ValueError) as error:
         print(f"ERROR AUDIO: {error}")
 
@@ -164,6 +212,10 @@ def leer_opciones():
         help="Graba y reproduce una prueba local, sin enviar audio a Dialogflow",
     )
     parser.add_argument(
+        "--probar-reconocimiento", action="store_true",
+        help="Graba, reproduce y envía la misma toma a Dialogflow para comparar",
+    )
+    parser.add_argument(
         "--microfono", type=int, default=None,
         help="Entrada de audio; si se omite, usa el micrófono predeterminado del sistema",
     )
@@ -171,6 +223,10 @@ def leer_opciones():
     parser.add_argument(
         "--segundos-sku", type=int, default=12,
         help="Duración al dictar el SKU (12 segundos por defecto)",
+    )
+    parser.add_argument(
+        "--sin-recorte-silencio", action="store_true",
+        help="Envía la grabación completa para comparar con el recorte de bordes",
     )
     opciones = parser.parse_args()
     if opciones.segundos < 1 or opciones.segundos_sku < 1:
@@ -183,8 +239,17 @@ def main():
     if opciones.listar_microfonos:
         listar_microfonos()
         return
+    if opciones.probar_reconocimiento:
+        probar_microfono(
+            opciones.segundos, opciones.microfono, comprobar_reconocimiento=True,
+            recortar=not opciones.sin_recorte_silencio,
+        )
+        return
     if opciones.probar_microfono:
-        probar_microfono(opciones.segundos, opciones.microfono)
+        probar_microfono(
+            opciones.segundos, opciones.microfono,
+            recortar=not opciones.sin_recorte_silencio,
+        )
         return
     print("=" * 55)
     print("Cliente de voz de Dialogflow")
@@ -205,7 +270,9 @@ def main():
                     "Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M "
                     "si has añadido el alias a la entidad codigo_sku en Dialogflow."
                 )
-            audio = escuchar(segundos, opciones.microfono)
+            audio = escuchar(
+                segundos, opciones.microfono, recortar=not opciones.sin_recorte_silencio
+            )
         except (sd.PortAudioError, ValueError) as error:
             print(f"ERROR MICRÓFONO: {error}")
             print("Consulta las entradas con --listar-microfonos y elige una con --microfono ID.")
