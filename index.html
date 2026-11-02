@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prueba Kit Robotic</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 4rem 2rem;
+      background: #f5f6f8;
+      color: #22262c;
+    }
+    .caja { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.6rem; margin-bottom: .5rem; }
+    p { line-height: 1.6; color: #555b63; }
+  </style>
+</head>
+<body>
+
+  <div class="caja">
+    <h1>Kit Robotic</h1>
+    <p>Pagina de ejemplo para probar el agente fuera del simulador.
+       El widget aparece abajo a la derecha.</p>
+    <p><strong>Si el widget no responde:</strong> id a la consola de Google Cloud,
+       APIs y servicios, y comprobad que <em>Dialogflow API</em> esta habilitada
+       en el proyecto. Es el fallo tipico.</p>
+    <p><strong>Ojo:</strong> este widget es texto, no voz. El requisito obligatorio
+       de voz se cumple con <code>cliente_voz.py</code>.</p>
+  </div>
+
+  <!-- ===================================================================
+       Snippet de Dialogflow Messenger.
+       Lo genera la consola en Integrations -> Dialogflow Messenger.
+       Sustituid agent-id por el vuestro.
+       =================================================================== -->
+  <script src="https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1"></script>
+  <df-messenger
+    intent="WELCOME"
+    chat-title="Kit Robotic"
+    agent-id="PEGAD-AQUI-VUESTRO-AGENT-ID"
+    language-code="es">
+  </df-messenger>
+
+</body>
+</html>

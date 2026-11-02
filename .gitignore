@@ -1,0 +1,78 @@
+#Ignorar las carpetas node_modules y dist
+node_modules/
+dist/
+
+#ignorar archivos de configuración de entorno
+#Ignorar los achivos ambiente virtual python si es intalado en linux o mac
+#Ignorar los achivos ambiente virtual python si es intalado en windows 
+.venv
+.venv/
+venv/
+
+#Ignora directorio pycache
+pycache/
+
+#Ignorar los achivos de cache 
+__pycache__/
+
+#Ignorar archivos de cobertura de pruebas
+coverage/
+
+#Ignorar archivos de compilación
+build/
+
+#Ignorar archivos de configuración de editor
+.vscode/
+
+#Ignorar archivos de sistema
+.DS_Store
+
+#Ignorar archivos de configuración de IDE
+.idea/
+
+#Ignorar archivos de configuración jupiter
+.ipynb_checkpoints/ 
+
+#Ignorar archivos de configuración de pytest    
+.pytest_cache/
+
+#Ignorar archivos de log y carpetas de logs
+logs/
+*.log
+
+# --- ML & data artifacts ---
+mlruns/
+artifacts/
+models/
+
+*.h5
+*.pkl
+*.joblib
+*.ckpt
+
+#ignorar datos de entrenamiento y modelos
+data/
+img/
+
+# --- Data files ---
+data/
+*.csv
+*.tsv
+*.json
+*.xlsx
+*.parquet
+*.zip
+*.gz
+AGENTS.md
+
+# --- Guias y documentación ---
+docs/
+data/
+
+# archvos de claves y secretos
+.env
+.agents
+.agents/
+.codex
+credentials.json
+my-project-agente-v1-cc15a176d628.json

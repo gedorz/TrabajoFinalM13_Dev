@@ -1,0 +1,6 @@
+Aqui debe estar vuestros documentos para el OCR (.jpg, .png, .tiff).
+
+Tienen que ser IMAGENES.
+
+Si abris un PDF y podeis seleccionar el texto con el raton, 
+ese PDF ya tiene capa de texto y extraerlo NO es OCR.
