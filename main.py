@@ -14,7 +14,6 @@ Acordaos de activar "Enable webhook call for this intent" EN CADA INTENCION.
 """
 
 import os
-import random
 import re
 
 from fastapi import FastAPI, Request
@@ -23,6 +22,7 @@ from google import genai
 from google.genai import types
 
 from ocr import cargar_documentos
+from negocio import gestionar_negocio, responder
 
 load_dotenv()  # carga GOOGLE_API_KEY desde el .env
 
@@ -40,77 +40,77 @@ PRODUCTOS = {
         "marca": "Xtensa",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-LX6D-WBT-16M": {
         "titular": "ESP32 original, Procesador Xtensa LX6 Dual-core, Wi-Fi + Bluetooth",
         "marca": "Xtensa",
         "ubicacion": "Barcelona",
         "disponible": False,
-        "franquicia": 500
+        "costo": 35
     },
     "ESP32-S2S-W-4M": {
         "titular": "Serie S2 Single-core (LX7), Solo Wi-Fi",
         "marca": "Xtensa",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-S3D-WBLE-8M8R": {
         "titular": "Serie S3 Dual-core (LX7), Wi-Fi + BLE 5.0, 8MB Flash + 8MB PSRAM",
         "marca": "Xtensa",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-S3D-WBLE-16M8R": {
         "titular": "Serie S3 Dual-core (LX7), Wi-Fi + BLE 5.0, 16MB Flash + 8MB PSRAM",
         "marca": "Xtensa",
         "ubicacion": "Barcelona",
         "disponible": False,
-        "franquicia": 500
+        "costo": 35
     },
     "ESP32-C2S-WBLE-2M": {
         "titular": "Serie C2 RISC-V Single-core, Wi-Fi + BLE, 2MB Flash",
         "marca": "RISC-V",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-C3S-WBLE-4M": {
         "titular": "Serie C3 RISC-V Single-core, Wi-Fi + BLE, 4MB Flash",
         "marca": "RISC-V",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-C5S-W6DB-4M": {
         "titular": "Serie C5 RISC-V Single-core, Wi-Fi 6 Doble Banda + BLE, 4MB Flash",
         "marca": "RISC-V",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300,
+        "costo": 25,
     },
     "ESP32-C6S-W6ZT-8M": {
         "titular": "Serie C6 RISC-V Single-core, Wi-Fi 6 + Zigbee/Thread + BLE, 8MB Flash",
         "marca": "RISC-V",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-H2S-ZBLE-4M": {
         "titular": "Serie H2 RISC-V Single-core, Sin Wi-Fi (Solo Zigbee/Thread + BLE), 4MB Flash",
         "marca": "RISC-V",
         "ubicacion": "Barcelona",
         "disponible": True,
-        "franquicia": 300
+        "costo": 25
     },
     "ESP32-P4D-NC-16R": {
         "titular": "Serie P4 RISC-V Dual-core (400MHz), No Connectivity, 16MB PSRAM",
         "marca": "RISC-V",
         "ubicacion": "Barcelona",
         "disponible": False,
-        "franquicia": 500
+        "costo": 35
     },
 }
 
@@ -125,49 +125,6 @@ DOCUMENTOS = cargar_documentos()
 print(f"Documentos cargados: {len(DOCUMENTOS)}\n")
 
 
-# Utilidades
-
-def responder(texto: str) -> dict:
-    """Formato minimo que espera Dialogflow ES."""
-    return {"fulfillmentText": texto}
-
-
-def normalizar_codigo_producto(valor: str) -> str:
-    """'1234 bcd' / '1234-BCD' -> '1234BCD'."""
-    return valor.upper().replace(" ", "").strip() # .replace("-", "").strip()
-
-
-# Logica de negocio: solicitar grua
-
-def gestionar_producto(parametros: dict) -> dict:
-    ubicacion = parametros.get("ubicacion", "")
-    SKU = normalizar_codigo_producto(parametros.get("codigo_sku", ""))
-
-    producto = PRODUCTOS.get(SKU)
-
-    # Camino de error 1: el SKU no esta en nuestros sistemas
-    if producto is None:
-        return responder(
-            f"No encuentro ningún producto con el SKU {SKU}. "
-            "Puede que la haya entendido mal. ¿Me lo repites?"
-        )
-
-    # Camino de error 2: existe pero no esta disponible para venta
-    if not producto["disponible"]:
-        return responder(
-            f"{producto['titular']}, tu producto no está disponible para venta. "
-            "¿Quieres que te pase con un agente para más información?"
-        )
-
-    # Camino bueno
-    pedido = f"AV-{random.randint(10000, 99999)}"
-    return responder(
-        f"Perfecto, He abierto el pedido {pedido} para tu {producto['titular']} "
-        f"Marca {producto['marca']} en {ubicacion}. "
-        "¿Confirmas que los datos son correctos?"
-    )
-
-
 # Endpoint
 
 @app.post("/webhook")
@@ -176,23 +133,19 @@ async def webhook(request: Request):
 
     resultado = body["queryResult"]
     intencion = resultado["intent"]["displayName"]
-    parametros = resultado.get("parameters", {})
     pregunta = resultado.get("queryText", "")
 
     # Imprimimos siempre lo que llega: sera util para depurar luego
     print("-" * 50)
     print("INTENCION:", intencion)
-    print("PARAMETROS:", parametros)
+    print("PARAMETROS:", resultado.get("parameters", {}))
     print("TEXTO:", pregunta)
 
-    if intencion == "solicitar_producto_amazon":
-        # Con "webhook call for slot filling" nos llaman en cada turno.
-        # Si aun faltan parametros, respuesta vacia: Dialogflow usa sus prompts.
-        if not resultado.get("allRequiredParamsPresent", False):
-            return {}
-        return gestionar_producto(parametros)
+    respuesta = gestionar_negocio(body, PRODUCTOS)
+    if respuesta is not None:
+        return respuesta
 
-    if intencion == "Default Fallback Intent":
+    if intencion in ("consulta_especificaciones_producto", "Default Fallback Intent"):
         return gestionar_fallback(pregunta)
 
     # Nunca dejar al agente sin respuesta
