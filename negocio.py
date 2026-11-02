@@ -3,6 +3,8 @@
 import re
 import uuid
 
+from docs.dialogflow.pistas_voz import ALIAS_SKU
+
 CONTEXTO_SOLICITUD = "solicitar_producto_amazon-followup"
 PATRON_SKU = r"(?i)\bESP32(?:-[A-Z0-9]+){2,4}\b"
 INTENCION_SOLICITUD = "solicitar_producto_amazon"
@@ -15,6 +17,8 @@ def responder(texto: str) -> dict:
 
 
 def normalizar_codigo_producto(valor: str) -> str:
+    alias = " ".join(valor.casefold().split())
+    valor = ALIAS_SKU.get(alias, valor)
     return valor.upper().replace(" ", "").strip()
 
 

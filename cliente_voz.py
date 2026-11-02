@@ -15,14 +15,18 @@ Uso:
     python cliente_voz.py
 """
 
+import argparse
 import os
 import uuid
 import wave
 from pathlib import Path
 
 import sounddevice as sd
+import numpy as np
 from google.cloud import dialogflow
 from dotenv import load_dotenv
+
+from docs.dialogflow.pistas_voz import PISTAS_RECONOCIMIENTO_SKU
 
 # Configuracion
 
@@ -39,16 +43,43 @@ SEGUNDOS = 5
 # Uno por conversacion, no uno por frase.
 SESSION_ID = str(uuid.uuid4())
 
-clientes = dialogflow.SessionsClient()
-sesion = clientes.session_path(PROJECT_ID, SESSION_ID)
+clientes = None
 
 
 # Grabacion y reproduccion
 
-def escuchar(segundos: int = SEGUNDOS) -> bytes:
+def listar_microfonos() -> None:
+    predeterminado = sd.default.device[0]
+    for indice, dispositivo in enumerate(sd.query_devices()):
+        if dispositivo["max_input_channels"] > 0:
+            api = sd.query_hostapis(dispositivo["hostapi"])["name"]
+            marca = " (predeterminado)" if indice == predeterminado else ""
+            print(f"{indice}: {dispositivo['name']} [{api}]{marca}")
+
+
+def escuchar(segundos: int = SEGUNDOS, microfono: int | None = None) -> bytes:
+    dispositivo = sd.query_devices(microfono, "input")
+    indice_microfono = dispositivo["index"]
+    sd.check_input_settings(
+        device=indice_microfono, channels=1, dtype="int16", samplerate=FS
+    )
+    seleccion = " (predeterminado del sistema)" if microfono is None else ""
+    print(f"Micrófono: {dispositivo['name']}{seleccion}")
     print(f"\nHabla ({segundos}s)...")
-    audio = sd.rec(int(segundos * FS), samplerate=FS, channels=1, dtype="int16")
+    audio = sd.rec(
+        int(segundos * FS), samplerate=FS, channels=1,
+        dtype="int16", device=indice_microfono,
+    )
     sd.wait()
+    pico = float(np.max(np.abs(audio.astype(np.float32)))) / 32768
+    print(f"Nivel máximo grabado: {pico:.1%}")
+    if pico < 0.001:
+        print(
+            "La grabación contiene silencio o un nivel muy bajo. "
+            "Revisa el micrófono elegido, el botón de silencio y el volumen "
+            "de entrada de Windows. No se enviará esta grabación a Dialogflow."
+        )
+        return b""
     print("Procesando...")
     return audio.tobytes()
 
@@ -66,7 +97,6 @@ def reproducir(wav_bytes: bytes, fichero: str = "respuesta.wav") -> None:
         datos = w.readframes(w.getnframes())
         tasa = w.getframerate()
 
-    import numpy as np
     muestras = np.frombuffer(datos, dtype=np.int16)
     sd.play(muestras, tasa)
     sd.wait()
@@ -74,12 +104,21 @@ def reproducir(wav_bytes: bytes, fichero: str = "respuesta.wav") -> None:
 
 # Llamada a Dialogflow
 
-def hablar_con_el_agente(audio_bytes: bytes):
+def hablar_con_el_agente(audio_bytes: bytes, esperando_sku: bool = False):
+    global clientes
+    if clientes is None:
+        clientes = dialogflow.SessionsClient()
+    sesion = clientes.session_path(PROJECT_ID, SESSION_ID)
     entrada = dialogflow.QueryInput(
         audio_config=dialogflow.InputAudioConfig(
             audio_encoding=dialogflow.AudioEncoding.AUDIO_ENCODING_LINEAR_16,
             language_code=IDIOMA,
             sample_rate_hertz=FS,
+            # Las pistas explícitas sustituyen la adaptación automática.
+            # Se aplican solo mientras se recoge el código del producto.
+            speech_contexts=[
+                dialogflow.SpeechContext(phrases=PISTAS_RECONOCIMIENTO_SKU, boost=10)
+            ] if esperando_sku else [],
         )
     )
 
@@ -99,7 +138,54 @@ def hablar_con_el_agente(audio_bytes: bytes):
 
 # Bucle de conversacion
 
+def probar_microfono(segundos: int, microfono: int | None) -> None:
+    print("Prueba local: la grabación no se guarda ni se envía a Dialogflow.")
+    print("Cuando aparezca 'Habla', di: Hola, quiero iniciar una solicitud.")
+    input("Pulsa Enter para empezar...")
+    try:
+        audio = escuchar(segundos, microfono)
+        if not audio:
+            return
+        print("Reproduciendo lo que ha captado el micrófono...")
+        sd.play(np.frombuffer(audio, dtype=np.int16), FS)
+        sd.wait()
+        print("Comprueba si oyes tu frase completa, clara y sin distorsión.")
+    except (sd.PortAudioError, ValueError) as error:
+        print(f"ERROR AUDIO: {error}")
+
+
+def leer_opciones():
+    parser = argparse.ArgumentParser(description="Cliente de voz de Kitia")
+    parser.add_argument(
+        "--listar-microfonos", action="store_true", help="Muestra las entradas de audio"
+    )
+    parser.add_argument(
+        "--probar-microfono", action="store_true",
+        help="Graba y reproduce una prueba local, sin enviar audio a Dialogflow",
+    )
+    parser.add_argument(
+        "--microfono", type=int, default=None,
+        help="Entrada de audio; si se omite, usa el micrófono predeterminado del sistema",
+    )
+    parser.add_argument("--segundos", type=int, default=SEGUNDOS, help="Duración de cada grabación")
+    parser.add_argument(
+        "--segundos-sku", type=int, default=12,
+        help="Duración al dictar el SKU (12 segundos por defecto)",
+    )
+    opciones = parser.parse_args()
+    if opciones.segundos < 1 or opciones.segundos_sku < 1:
+        parser.error("Las duraciones de grabación deben ser mayores que cero")
+    return opciones
+
+
 def main():
+    opciones = leer_opciones()
+    if opciones.listar_microfonos:
+        listar_microfonos()
+        return
+    if opciones.probar_microfono:
+        probar_microfono(opciones.segundos, opciones.microfono)
+        return
     print("=" * 55)
     print("Cliente de voz de Dialogflow")
     print(f"Proyecto : {PROJECT_ID}")
@@ -107,12 +193,40 @@ def main():
     print("Enter para hablar, 'q' + Enter para salir.")
     print("=" * 55)
 
+    esperando_sku = False
     while True:
         if input("\n> ").strip().lower() == "q":
             break
 
-        respuesta = hablar_con_el_agente(escuchar())
+        try:
+            segundos = opciones.segundos_sku if esperando_sku else opciones.segundos
+            if esperando_sku:
+                print(
+                    "Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M "
+                    "si has añadido el alias a la entidad codigo_sku en Dialogflow."
+                )
+            audio = escuchar(segundos, opciones.microfono)
+        except (sd.PortAudioError, ValueError) as error:
+            print(f"ERROR MICRÓFONO: {error}")
+            print("Consulta las entradas con --listar-microfonos y elige una con --microfono ID.")
+            continue
+        if not audio:
+            continue
+        respuesta = hablar_con_el_agente(audio, esperando_sku=esperando_sku)
         r = respuesta.query_result
+
+        if not r.query_text.strip() and not r.intent.display_name:
+            print(
+                "Dialogflow no ha reconocido palabras en la grabación. "
+                "Habla después de 'Habla', prueba otra entrada con --microfono "
+                "o aumenta la duración con --segundos 8."
+            )
+            continue
+
+        esperando_sku = (
+            r.intent.display_name in ("solicitar_producto_amazon", "consultar_disponibiliadad")
+            and not r.parameters.get("codigo_sku")
+        )
 
         # query_text es vuestro speech-to-text. No hemos llamado a ningun
         # servicio de transcripcion: va dentro del mismo detect_intent.
