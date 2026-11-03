@@ -1,0 +1,197 @@
+(.venv) PS D:\MasterPontiaIA\M13_IA_clasica\TrabajoFinalM13_Dev> .\.venv\Scripts\python.exe .\cliente_voz.py --segundos 8
+=======================================================
+Cliente de voz de Dialogflow
+Proyecto : my-project-agente-v1
+Sesion   : 8233adad-13f8-4448-9d31-6a2b8a60e247
+Voz      : latest_long (es-ES)
+Sí / No  : latest_short
+Enter para hablar, 'q' + Enter para salir.
+=======================================================
+
+> 
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 8s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 14.7%
+Duración capturada: 5.50s; audio preparado: 1.72s (recorte activado).
+Procesando...
+  Has dicho  : quiero iniciar una solicitud
+  Confianza de voz: 0.98
+  Intencion  : solicitar_producto_amazon (1.00)
+  Parametros : {'codigo_sku': '', 'ubicacion': ''}
+  Responde   : ¿Qué SKU quieres solicitar? Por ejemplo, ESP32-LX6D-WBT-4M.
+
+> 
+Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M si has añadido el alias a la entidad codigo_sku en Dialogflow.
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 12s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 17.1%
+Duración capturada: 7.84s; audio preparado: 4.44s (recorte activado).
+Procesando...
+  Has dicho  : esp32 L x 6 de W t4m
+  Confianza de voz: 0.41
+  Intencion  : solicitar_producto_amazon (0.00)
+  Parametros : {'codigo_sku': '', 'ubicacion': ''}
+  Responde   : ¿Te refieres a ESP32 original, Procesador Xtensa LX6 Dual-core, código ESP32-LX6D-WBT-4M? Confirma el código respondiendo sí o no.
+
+> 
+Confirma el código propuesto diciendo sí o no.
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 12s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 14.1%
+Duración capturada: 4.48s; audio preparado: 1.30s (recorte activado).
+Procesando...
+  Has dicho  : incorre
+  Confianza de voz: 0.01
+  Intencion  : solicitar_producto_amazon (0.00)
+  Parametros : {'codigo_sku': '', 'ubicacion': ''}
+  Responde   : ¿Te refieres a ESP32 original, Procesador Xtensa LX6 Dual-core, código ESP32-LX6D-WBT-4M? Confirma el código respondiendo sí o no.
+
+> 
+Confirma el código propuesto diciendo sí o no.
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 12s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 13.2%
+Duración capturada: 4.22s; audio preparado: 1.04s (recorte activado).
+Procesando...
+  Has dicho  : sí
+  Texto procesado: ESP32-LX6D-WBT-4M
+  Confianza de voz: 0.60
+  Intencion  : solicitar_producto_amazon (1.00)
+  Parametros : {'codigo_sku': 'ESP32-LX6D-WBT-4M', 'ubicacion': ''}
+  Responde   : ¿En qué ciudad quieres recogerlo?
+
+> 
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 8s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 16.1%
+Duración capturada: 4.86s; audio preparado: 1.66s (recorte activado).
+Procesando...
+  Has dicho  : en la ciudad de Barcelona
+  Texto procesado: Barcelona
+  Confianza de voz: 0.97
+  Intencion  : solicitar_producto_amazon (1.00)
+  Parametros : {'codigo_sku': 'ESP32-LX6D-WBT-4M', 'ubicacion': 'Barcelona'}
+  Responde   : Prepararemos una solicitud de prueba de ESP32-LX6D-WBT-4M, ESP32 original, Procesador Xtensa LX6 Dual-core, por 25 euros en Barcelona. ¿Confirmas? Responde sí o no.
+
+> 
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 8s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 14.2%
+Duración capturada: 4.90s; audio preparado: 1.56s (recorte activado).
+Procesando...
+  Has dicho  : sí confirmado
+  Confianza de voz: 0.94
+  Intencion  : solicitar_producto_amazon - yes (1.00)
+  Parametros : {}
+  Responde   : Solicitud de prueba DEMO-BACDCB68AD2E confirmada para ESP32-LX6D-WBT-4M en Barcelona, por 25 euros. Es una simulación: no se ha realizado una compra ni un envío real.
+
+> 
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 8s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 15.5%
+Duración capturada: 5.30s; audio preparado: 2.08s (recorte activado).
+Procesando...
+  Has dicho  : quiero iniciar una solicitud
+  Confianza de voz: 0.98
+  Intencion  : solicitar_producto_amazon (1.00)
+  Parametros : {'codigo_sku': '', 'ubicacion': ''}
+  Responde   : ¿Qué SKU quieres solicitar? Por ejemplo, ESP32-LX6D-WBT-4M.
+
+> 
+Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M si has añadido el alias a la entidad codigo_sku en Dialogflow.
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 12s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 16.9%
+Duración capturada: 8.92s; audio preparado: 4.52s (recorte activado).
+Procesando...
+Dialogflow no ha reconocido palabras en la grabación. Habla después de 'Habla', prueba otra entrada con --microfono o aumenta la duración con --segundos 8.
+
+> 
+Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M si has añadido el alias a la entidad codigo_sku en Dialogflow.
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 12s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 16.1%
+Duración capturada: 6.88s; audio preparado: 2.06s (recorte activado).
+Procesando...
+  Has dicho  : la placa 1 estaría bien
+  Confianza de voz: 0.98
+  Intencion  : solicitar_producto_amazon (0.00)
+  Parametros : {'codigo_sku': '', 'ubicacion': ''}
+  Responde   : Todavía no he confirmado el producto. Repite el código completo o di placa uno para el ESP32 clásico de cuatro megas.
+
+> 
+Puedes decir 'placa uno' para ESP32-LX6D-WBT-4M si has añadido el alias a la entidad codigo_sku en Dialogflow.
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 12s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 15.1%
+Duración capturada: 5.02s; audio preparado: 1.36s (recorte activado).
+Procesando...
+  Has dicho  : placa 1
+  Texto procesado: ESP32-LX6D-WBT-4M
+  Confianza de voz: 0.67
+  Intencion  : solicitar_producto_amazon (1.00)
+  Parametros : {'codigo_sku': 'ESP32-LX6D-WBT-4M', 'ubicacion': ''}
+  Responde   : ¿En qué ciudad quieres recogerlo?
+
+> 
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 8s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 16.3%
+Duración capturada: 5.06s; audio preparado: 1.66s (recorte activado).
+Procesando...
+  Has dicho  : en la ciudad de Barcelona
+  Texto procesado: Barcelona
+  Confianza de voz: 1.00
+  Intencion  : solicitar_producto_amazon (1.00)
+  Parametros : {'codigo_sku': 'ESP32-LX6D-WBT-4M', 'ubicacion': 'Barcelona'}
+  Responde   : Prepararemos una solicitud de prueba de ESP32-LX6D-WBT-4M, ESP32 original, Procesador Xtensa LX6 Dual-core, por 25 euros en Barcelona. ¿Confirmas? Responde sí o no.
+
+> 
+Micrófono: Microphone Array (Senary Audio) (predeterminado del sistema)
+Preparando micrófono; espera al aviso 'Habla'...
+
+Habla (máximo 8s; parada tras más de 3s de silencio)...
+Grabación detenida: más de 3 segundos de silencio.
+Nivel máximo grabado: 20.2%
+Duración capturada: 4.28s; audio preparado: 1.00s (recorte activado).
+Procesando...
+  Has dicho  : no
+  Confianza de voz: 0.72
+  Intencion  : solicitar_producto_amazon - no (1.00)
+  Parametros : {}
+  Responde   : Solicitud cancelada. No se ha realizado ninguna compra.
+
+> 

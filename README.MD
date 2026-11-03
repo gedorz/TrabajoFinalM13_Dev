@@ -8,7 +8,11 @@ Pontia:
 Las siguientes evidencias recogen ejecuciones satisfactorias del prototipo.
 Las solicitudes son simuladas: no se realizan compras ni envíos reales.
 
-video de youtube https://youtu.be/P5S07cUQtYQ
+### Vídeo de demostración
+
+[![Vista previa del vídeo de demostración del asistente](https://img.youtube.com/vi/P5S07cUQtYQ/hqdefault.jpg)](https://youtu.be/P5S07cUQtYQ)
+
+▶ **[Ver demostración en YouTube](https://youtu.be/P5S07cUQtYQ)**
 
 
 ### Acceso público y documentos cargados
@@ -230,15 +234,52 @@ ni cambiar la URL de Fulfillment:
 .\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 ```
 
-Cinco pruebas locales de `docs/codetest/test_respuestas_ssml.py` pasan:
-escape XML y lectura de SKU, respuestas vacías, preparación y cierre sí/no,
-ayuda/documentación y catálogo/errores. Se valida además el JSON con el esquema
-`WebhookResponse` del SDK de Dialogflow ES y que el texto del XML coincida con
-el mensaje visible. La ejecución inicial en el sandbox se bloqueó en la parte
-asíncrona y se detuvo; las cinco pruebas pasaron fuera del sandbox con autorización.
-No hubo consultas a Gemini ni a Dialogflow. No se acredita todavía mediante
-estas pruebas la síntesis real, su calidad auditiva ni una latencia inferior a
-cinco segundos por turno.
+### Evidencia de implementación y pruebas SSML
+
+Implementación comprobable en
+[respuestas_voz.py](docs/dialogflow/respuestas_voz.py), aplicada por
+[main.py](main.py) y registrada mediante
+[diagnostico.py](docs/dialogflow/diagnostico.py).
+
+Las cinco pruebas de [test_respuestas_ssml.py](docs/codetest/test_respuestas_ssml.py)
+se ejecutaron satisfactoriamente:
+
+| Prueba | Comprobación | Resultado registrado |
+| --- | --- | --- |
+| Escape y lectura de SKU | XML válido; texto dinámico escapado; SKU en `say-as`; pausa de 180 ms. | OK |
+| Respuestas vacías | Recogida de parámetros y escucha de confirmación sin locución añadida; payload conservado. | OK |
+| Preparación y cierre sí/no | Estado pendiente conservado, aviso de simulación y cierre del contexto tras confirmar o cancelar. | OK |
+| Ayuda SKU y documentación | Respuestas con SSML y payload conservado; respuesta documental simulada. | OK |
+| Catálogo y errores | Texto visible legible y SSML válido en respuestas de catálogo, SKU inválido e intención desconocida. | OK |
+
+La integración valida el JSON con el esquema `WebhookResponse` del SDK de
+Dialogflow ES y comprueba que el contenido textual del XML coincide con
+`fulfillmentText`. El resultado de la ejecución registrada fue **5 pruebas, OK**.
+La ejecución inicial en el sandbox se bloqueó en la parte asíncrona y se detuvo;
+las cinco pruebas pasaron fuera del sandbox con autorización. No hubo consultas
+a Gemini ni a Dialogflow.
+
+Comando para reproducir las pruebas:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest docs.codetest.test_respuestas_ssml -v
+```
+
+### Alcance de la prueba de interacción aportada
+
+El [registro adicional de interacción por voz](documentos/evidencias/interaccion-voz-2026-11-03.txt)
+corresponde a la sesión `8233adad-13f8-4448-9d31-6a2b8a60e247`. Muestra la
+confirmación de la solicitud simulada `DEMO-BACDCB68AD2E` y una segunda solicitud
+cancelada al reconocer «no». Incluye repeticiones de reconocimiento; no se
+presenta como una ejecución sin incidencias de transcripción.
+
+Este registro acredita los cierres por voz, pero no muestra el SSML recibido
+por Dialogflow ni tiempos de envío y recepción. El diagnóstico local revisado
+para esa misma sesión tampoco contenía `mensajes_devueltos`. Por tanto, la
+implementación y las pruebas locales de SSML están acreditadas; la síntesis
+real de ese marcado, su calidad auditiva y la latencia inferior a cinco segundos
+por turno siguen sin quedar demostradas mediante ese registro. Las duraciones
+de captura y de audio recortado no equivalen al tiempo de respuesta del agente.
 
 
 # Arquitectura de referencia para este proyecto
